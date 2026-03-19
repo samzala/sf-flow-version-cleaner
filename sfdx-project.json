@@ -4,8 +4,8 @@
       "path": "force-app",
       "default": true,
       "package": "Flow Version Cleaner",
-      "versionName": "ver 0.1",
-      "versionNumber": "0.1.0.NEXT",
+      "versionName": "ver 0.2",
+      "versionNumber": "0.2.0.NEXT",
       "versionDescription": "Automatically cleans up obsolete and draft flow versions",
       "ignoreOnStage": [
         "connectedApps",
@@ -20,6 +20,6 @@
   "sourceApiVersion": "65.0",
   "packageAliases": {
     "Flow Version Cleaner": "0HoIS000000005G0AQ",
-    "Flow Version Cleaner@0.1.0-1": "04tIS000000U2bnYAC"
+    "Flow Version Cleaner@0.2.0-1": "04tIS000000U2bnYAC"
   }
 }
