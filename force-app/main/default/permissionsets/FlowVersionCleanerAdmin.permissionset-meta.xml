@@ -16,10 +16,6 @@
         <apexClass>FlowVersionCleanerTest</apexClass>
         <enabled>true</enabled>
     </classAccesses>
-    <externalCredentialPrincipalAccesses>
-        <enabled>true</enabled>
-        <externalCredentialPrincipal>Flow_Cleaner_External_Credential-ClientIDSecret</externalCredentialPrincipal>
-    </externalCredentialPrincipalAccesses>
     <hasActivationRequired>false</hasActivationRequired>
     <label>FlowVersionCleanerAdmin</label>
 </PermissionSet>

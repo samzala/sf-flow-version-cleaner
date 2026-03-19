@@ -2,11 +2,19 @@
   "packageDirectories": [
     {
       "path": "force-app",
-      "default": true
+      "default": true,
+      "package": "Flow Version Cleaner",
+      "versionName": "ver 0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "versionDescription": "Automatically cleans up obsolete and draft flow versions",
+      "ignoreOnStage": ["connectedApps", "namedCredentials", "externalCredentials"]
     }
   ],
   "name": "DevTrailhead",
   "namespace": "",
   "sfdcLoginUrl": "https://login.salesforce.com",
-  "sourceApiVersion": "65.0"
+  "sourceApiVersion": "65.0",
+  "packageAliases": {
+    "Flow Version Cleaner": "0HoIS000000005G0AQ"
+  }
 }
