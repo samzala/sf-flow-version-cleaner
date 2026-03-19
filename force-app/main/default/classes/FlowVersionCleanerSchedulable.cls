@@ -7,8 +7,8 @@
  *   // Run daily at 2 AM
  *   System.schedule('Flow Version Cleaner', '0 0 2 * * ?', new FlowVersionCleanerSchedulable());
  */
-public with sharing class FlowVersionCleanerSchedulable implements Schedulable {
-    public void execute(SchedulableContext ctx) {
-        FlowVersionCleaner.run();
+public class FlowVersionCleanerSchedulable implements Schedulable {
+    public void execute(SchedulableContext sc) {
+        System.enqueueJob(new FlowVersionCleanerQueueable());
     }
 }
