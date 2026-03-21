@@ -15,26 +15,28 @@ Flow versions in your org, keeping it tidy and within platform limits.
 
 ## Install
 
-[Click here to install](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIS000000U2bsYAC)
+[Click here to install](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIS000000U2bxYAC)
 
 Or via Salesforce CLI:
 ```powershell
-sf package install --package 04tIS000000U2bsYAC --target-org <your-org-alias> --wait 10
+sf package install --package 04tIS000000U2bxYAC --target-org <your-org-alias> --wait 10
 ```
 
 ## Post-Install Setup
 
 ### 1. Create a Connected App
-- Setup → External Client App Manager → New Connected App, Name: "Flow Version Cleaner"
-- Enable OAuth Settings
-- Add scopes: `Manage User Data via. APIs`
-- Enable Client Credentials Flow
-- Require secret for Refresh Token Flow
-- Set Run As to a user with API access and Manage Flow permission
-- Save and note the **Consumer Key** and **Consumer Secret**
-- Go to Policies tab
-- select "Admin Approved Users are Pre-authorized" on Permitted Users
-- Add a run as user.
+1. Go to Setup → External Client App Manager→ New Connected App.
+2. Enable OAuth Settings.
+3. Callback URL: https://login.salesforce.com/services/oauth2/success
+4. Add scopes: Full access (full) and Perform requests at any time (refresh_token).
+5. Enable Client Credentials Flow.
+6. Set Run As to a user with API access and Manage Flow permission.
+7. Save
+8. Edit the Policies tab under App Policies, select the “Manage user data via APIs (api)”
+9. Under Plugin Policies>> Permitted User set “Admin Approved users are pre-authorized”
+10. On the same tab, Enable the Client Credentials Flow and select the run as user and save.
+11. Edit settings tab and under OAuth Scopes, select “Manage user data via APIs (api)” and remove other scopes. Save
+12. Save and note the Consumer Key and Consumer Secret.
 
 ### 2. Create an External Credential
 - Setup → Named Credentials → External Credentials → New
@@ -42,7 +44,7 @@ sf package install --package 04tIS000000U2bsYAC --target-org <your-org-alias> --
 - Name: `FlowCleanerEC`
 - Authentication Protocol: `OAuth 2.0`
 - Authentication Flow: `Client Credentials`
-- Identity Provider URL: `https://login.salesforce.com/services/oauth2/token`
+- Identity Provider URL: `https://<your-instance>.my.salesforce.com/services/oauth2/token`
 - Under Principals → New Principal:
   - Name: `FlowCleanerPrincipal`
   - Enter the **Consumer Key** and **Consumer Secret** from step 1

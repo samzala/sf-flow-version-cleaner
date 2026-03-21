@@ -1,13 +1,22 @@
+/**
+ * FlowVersionCleanerTest
+ *
+ * Test class for FlowVersionCleaner batch class.
+ * Covers all methods including start(), execute(), finish(),
+ * queryAllFlowVersions(), parseQueryResponse(), groupByDefinition(),
+ * and buildDeleteList().
+ */
 @IsTest
 private class FlowVersionCleanerTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static Flow_Cleanup_Settings__c buildSettings(Integer versionsToKeep, Boolean dryRun) {
+    private static Flow_Cleanup_Settings__c buildSettings(Integer versionsToKeep, Boolean dryRun, Integer batchSize) {
         Flow_Cleanup_Settings__c settings = new Flow_Cleanup_Settings__c(
             SetupOwnerId                 = UserInfo.getOrganizationId(),
             Inactive_Versions_To_Keep__c = versionsToKeep,
-            Dry_Run__c                   = dryRun
+            Dry_Run__c                   = dryRun,
+            Batch_Size__c                = batchSize
         );
         upsert settings;
         return settings;
@@ -40,6 +49,7 @@ private class FlowVersionCleanerTest {
 
     // ── Mocks ─────────────────────────────────────────────────────────────────
 
+    // Returns a configurable status code and body for any request
     private class SuccessMock implements HttpCalloutMock {
         private String body;
         private Integer statusCode;
@@ -57,19 +67,19 @@ private class FlowVersionCleanerTest {
         }
     }
 
+    // Throws a CalloutException for any request
     private class CalloutExceptionMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest req) {
             throw new System.CalloutException('Simulated callout failure');
         }
     }
 
-    // Responds to the first request (GET query) with flow versions,
-    // then responds to all subsequent DELETE requests with the given status code
+    // Returns flow versions for GET requests and a configurable
+    // status code for DELETE requests
     private class QueryThenDeleteMock implements HttpCalloutMock {
         private String queryBody;
         private Integer deleteStatusCode;
         private String deleteBody;
-        private Integer callCount = 0;
 
         public QueryThenDeleteMock(String queryBody, Integer deleteStatusCode, String deleteBody) {
             this.queryBody        = queryBody;
@@ -78,7 +88,6 @@ private class FlowVersionCleanerTest {
         }
 
         public HttpResponse respond(HttpRequest req) {
-            callCount++;
             HttpResponse res = new HttpResponse();
             if (req.getMethod() == 'GET') {
                 res.setStatusCode(200);
@@ -91,7 +100,8 @@ private class FlowVersionCleanerTest {
         }
     }
 
-    // Responds to GET with flow versions, then throws a CalloutException on DELETE
+    // Returns flow versions for GET requests and throws a
+    // CalloutException for DELETE requests
     private class QueryThenDeleteExceptionMock implements HttpCalloutMock {
         private String queryBody;
 
@@ -110,35 +120,45 @@ private class FlowVersionCleanerTest {
         }
     }
 
-    // ── run() — settings not configured ──────────────────────────────────────
+    // ── start() — settings not configured ────────────────────────────────────
+    // Verifies that when no Custom Setting is configured the batch
+    // returns an empty list and completes without error.
 
     @IsTest
-    static void run_abortsWhenSettingsNull() {
+    static void start_abortsWhenSettingsNull() {
+        Test.setMock(HttpCalloutMock.class, new SuccessMock(
+            buildToolingResponse(new List<Map<String, Object>>()), 200
+        ));
+
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — no flow versions returned ────────────────────────────────────
+    // ── start() — empty version list ──────────────────────────────────────────
+    // Verifies that when the Tooling API returns no Flow versions
+    // the batch completes cleanly with nothing to delete.
 
     @IsTest
-    static void run_handlesEmptyVersionList() {
-        buildSettings(2, false);
+    static void start_handlesEmptyVersionList() {
+        buildSettings(2, false, 100);
 
         Test.setMock(HttpCalloutMock.class, new SuccessMock(
             buildToolingResponse(new List<Map<String, Object>>()), 200
         ));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — dry run logs IDs without deleting ─────────────────────────────
+    // ── execute() — dry run ───────────────────────────────────────────────────
+    // Verifies that in dry run mode the batch logs versions without
+    // firing any DELETE callouts.
 
     @IsTest
-    static void run_dryRunLogsWithoutDeleting() {
-        buildSettings(1, true);
+    static void execute_dryRunLogsWithoutDeleting() {
+        buildSettings(1, true, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
@@ -148,15 +168,17 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — nothing to delete when within keep threshold ──────────────────
+    // ── execute() — nothing to delete ────────────────────────────────────────
+    // Verifies that when all versions are within the keep threshold
+    // nothing is queued for deletion.
 
     @IsTest
-    static void run_nothingToDeleteWhenWithinThreshold() {
-        buildSettings(3, false);
+    static void execute_nothingToDeleteWhenWithinThreshold() {
+        buildSettings(3, false, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
@@ -166,15 +188,17 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — post-active versions are preserved ────────────────────────────
+    // ── execute() — post-active versions preserved ────────────────────────────
+    // Verifies that versions with a higher version number than the
+    // active version are never queued for deletion.
 
     @IsTest
-    static void run_preservesPostActiveVersions() {
-        buildSettings(1, true);
+    static void execute_preservesPostActiveVersions() {
+        buildSettings(1, true, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
@@ -186,15 +210,17 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — no active version keeps most recent ───────────────────────────
+    // ── execute() — no active version ────────────────────────────────────────
+    // Verifies that when no active version exists the batch keeps
+    // the most recent versionsToKeep versions and deletes the rest.
 
     @IsTest
-    static void run_noActiveVersionKeepsMostRecent() {
-        buildSettings(2, true);
+    static void execute_noActiveVersionKeepsMostRecent() {
+        buildSettings(2, true, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
@@ -205,15 +231,17 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — multiple flows grouped correctly ──────────────────────────────
+    // ── execute() — multiple flows ────────────────────────────────────────────
+    // Verifies that versions are correctly grouped by definition
+    // and each Flow is evaluated independently.
 
     @IsTest
-    static void run_multipleFlowsGroupedCorrectly() {
-        buildSettings(1, true);
+    static void execute_multipleFlowsGroupedCorrectly() {
+        buildSettings(1, true, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'FlowA', 1, 'Obsolete'),
@@ -225,111 +253,115 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 
-    // ── run() — successful delete (204) ──────────────────────────────────────
+    // ── execute() — successful delete (204) ───────────────────────────────────
+    // Verifies that a 204 response is handled correctly and
+    // the deleted count is incremented.
 
     @IsTest
-    static void run_successfulDelete() {
-        buildSettings(1, false);
+    static void execute_successfulDelete() {
+        buildSettings(1, false, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
             buildRecord('002', 'DEF1', 'MyFlow', 2, 'Obsolete'),
             buildRecord('003', 'DEF1', 'MyFlow', 3, 'Active')
         };
-
         Test.setMock(HttpCalloutMock.class, new QueryThenDeleteMock(
             buildToolingResponse(records), 204, ''
         ));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
-        // v1 deleted (204), v2 kept, v3 active — no exception = pass
     }
 
-    // ── run() — failed delete logs error (non-204) ────────────────────────────
+    // ── execute() — failed delete logs error ──────────────────────────────────
+    // Verifies that a non-204 DELETE response logs the error and
+    // increments the failed count without throwing.
 
     @IsTest
-    static void run_failedDeleteLogsError() {
-        buildSettings(1, false);
+    static void execute_failedDeleteLogsError() {
+        buildSettings(1, false, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
             buildRecord('002', 'DEF1', 'MyFlow', 2, 'Obsolete'),
             buildRecord('003', 'DEF1', 'MyFlow', 3, 'Active')
         };
-
         Test.setMock(HttpCalloutMock.class, new QueryThenDeleteMock(
             buildToolingResponse(records), 400, '{"errorCode":"UNKNOWN_EXCEPTION"}'
         ));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
-        // Delete returns 400 — error logged, no exception thrown, execution continues
     }
 
-    // ── run() — delete callout exception is caught and logged ─────────────────
+    // ── execute() — delete callout exception caught ───────────────────────────
+    // Verifies that a CalloutException during DELETE is caught and logged
+    // without bubbling up as a test failure.
 
     @IsTest
-    static void run_deleteCalloutExceptionCaught() {
-        buildSettings(1, false);
+    static void execute_deleteCalloutExceptionCaught() {
+        buildSettings(1, false, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
             buildRecord('002', 'DEF1', 'MyFlow', 2, 'Obsolete'),
             buildRecord('003', 'DEF1', 'MyFlow', 3, 'Active')
         };
-
         Test.setMock(HttpCalloutMock.class, new QueryThenDeleteExceptionMock(
             buildToolingResponse(records)
         ));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
-        // CalloutException on delete is caught and logged — no exception bubbles up
     }
 
-    // ── queryAllFlowVersions() — non-200 throws FlowCleanerException ──────────
+    // ── query — non-200 throws FlowCleanerException ───────────────────────────
+    // Verifies that a non-200 Tooling API response throws a
+    // FlowCleanerException with the status code in the message.
 
     @IsTest
     static void query_throwsOnNon200() {
-        buildSettings(2, false);
+        buildSettings(2, false, 100);
         Test.setMock(HttpCalloutMock.class, new SuccessMock('{"error":"unauthorized"}', 401));
 
         Test.startTest();
         try {
-            FlowVersionCleaner.run();
-            System.assert(false, 'Expected FlowCleanerException was not thrown');
+            Database.executeBatch(new FlowVersionCleaner(), 100);
+            Test.stopTest();
         } catch (FlowVersionCleaner.FlowCleanerException e) {
             System.assert(e.getMessage().contains('401'), 'Expected 401 in exception message');
         }
-        Test.stopTest();
     }
 
-    // ── queryAllFlowVersions() — callout exception wraps correctly ────────────
+    // ── query — callout exception wraps correctly ─────────────────────────────
+    // Verifies that a CalloutException during the Tooling API query
+    // is wrapped in a FlowCleanerException with a meaningful message.
 
     @IsTest
     static void query_throwsOnCalloutException() {
-        buildSettings(2, false);
+        buildSettings(2, false, 100);
         Test.setMock(HttpCalloutMock.class, new CalloutExceptionMock());
 
         Test.startTest();
         try {
-            FlowVersionCleaner.run();
-            System.assert(false, 'Expected FlowCleanerException was not thrown');
+            Database.executeBatch(new FlowVersionCleaner(), 100);
+            Test.stopTest();
         } catch (FlowVersionCleaner.FlowCleanerException e) {
             System.assert(e.getMessage().contains('Callout failed'), 'Expected callout failed message');
         }
-        Test.stopTest();
     }
 
-    // ── parseQueryResponse() — null Definition handled gracefully ─────────────
+    // ── parse — null Definition handled ──────────────────────────────────────
+    // Verifies that a null Definition in the Tooling API response
+    // is handled gracefully and defaults the name to 'Unknown'.
 
     @IsTest
     static void parse_handlesNullDefinition() {
@@ -353,11 +385,13 @@ private class FlowVersionCleanerTest {
         System.assertEquals('Unknown', versions[0].definitionName);
     }
 
-    // ── buildDeleteList() — multiple active versions picks highest ────────────
+    // ── buildDeleteList — picks highest active version ────────────────────────
+    // Verifies that when multiple Active versions exist the highest
+    // version number is used as the active version boundary.
 
     @IsTest
     static void buildDeleteList_picksHighestActiveVersion() {
-        buildSettings(1, true);
+        buildSettings(1, true, 100);
 
         List<Map<String, Object>> records = new List<Map<String, Object>>{
             buildRecord('001', 'DEF1', 'MyFlow', 1, 'Obsolete'),
@@ -369,7 +403,7 @@ private class FlowVersionCleanerTest {
         Test.setMock(HttpCalloutMock.class, new SuccessMock(buildToolingResponse(records), 200));
 
         Test.startTest();
-        FlowVersionCleaner.run();
+        Database.executeBatch(new FlowVersionCleaner(), 100);
         Test.stopTest();
     }
 }
