@@ -39,35 +39,31 @@ sf package install --package 04tIS000000U2bxYAC --target-org <your-org-alias> --
 12. Save and note the Consumer Key and Consumer Secret.
 
 ### 2. Create an External Credential
-- Setup → Named Credentials → External Credentials → New
-- Label: `FlowCleanerEC`
-- Name: `FlowCleanerEC`
-- Authentication Protocol: `OAuth 2.0`
-- Authentication Flow: `Client Credentials`
-- Identity Provider URL: `https://<your-instance>.my.salesforce.com/services/oauth2/token`
-- Under Principals → New Principal:
-  - Name: `FlowCleanerPrincipal`
-  - Enter the **Consumer Key** and **Consumer Secret** from step 1
+1.	Go to Setup → Named Credentials → External Credentials → New.
+2.	Set Label and Name to Flow Cleaner External Credential.
+3.	Set Authentication Protocol to OAuth 2.0 and Authentication Flow to Client Credentials with Client Secret Flow.
+4.	Set Identity Provider URL to https://<yourorg>.my.salesforce.com/services/oauth2/token.
+5.	Check the Pass client credentials in request body checkbox and save.
+6.	Under Principals on the same page, create a new Principal named “ClientIDSecret” and enter the Consumer Key and Consumer Secret from Step 2.
 
 ### 3. Create a Named Credential
-- Setup → Named Credentials → New
-- Label: `FlowCleanerNC`
-- Name: `FlowCleanerNC`
-- URL: `https://<your-instance>.my.salesforce.com`
-- External Credential: `FlowCleanerEC`
-- Check **Generate Authorization Header**
+1.	Go to Setup → Named Credentials → New.
+2.	Set Label and Name to FlowCleanerNC.
+3.	Set URL to https://<yourorg>.my.salesforce.com.
+4.	Set External Credential to FlowCleanerEC.
+5.	Check Generate Authorization Header.
 
 ### 4. Assign the Permission Set
-- Setup → Permission Sets → Flow Version Cleaner Admin
-- Click **Manage Assignments** → Add the user who will run the job
-- Go back to External Credentials → FlowCleanerEC → Principals → FlowCleanerPrincipal
-- Assign the principal to the **Flow Version Cleaner Admin** permission set
-- Add the permission set to the connected app that got created.
+1.	Go to Setup → Permission Sets → Flow Version Cleaner Admin.
+2.	Click Manage Assignments and assign it to the user who will run the job.
+3.	On the FlowVersionCleanerAdmin Permissionset, assign the External Credential just created to External Credential Principle Access.
 
 ### 5. Configure the Custom Setting
-- Setup → Custom Settings → Flow Cleanup Settings → Manage → New
-- **Inactive Versions To Keep** — number of inactive versions to keep per flow (e.g. `2`)
-- **Dry Run** — set to `true` initially to verify before enabling live deletion
+1.	Go to Setup → Custom Settings → Flow Cleanup Settings → Manage → New.
+2.	Set Inactive Versions To Keep — number of inactive versions to retain per Flow (e.g. 2).
+3.	Set Batch Size — number of DELETE callouts per batch chunk (e.g. 10 for heavily customised orgs, up to 100 for smaller orgs). Recommended: 20
+4.	Set Dry Run to true for the first run.
+
 
 ### 6. Schedule the Job
 Run this in Anonymous Apex:
