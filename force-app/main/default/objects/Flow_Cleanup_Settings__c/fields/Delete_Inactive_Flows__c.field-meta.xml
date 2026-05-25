@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Delete_Inactive_Flows__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>When enabled, flows that have been completely inactive (no active version) for longer than the configured threshold will be fully deleted — including all interviews, all versions, and the flow definition itself.</description>
+    <label>Delete Inactive Flows</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>
