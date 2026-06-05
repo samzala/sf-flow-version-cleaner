@@ -16,7 +16,7 @@
  *
  * Uses the same Named Credential (FlowCleanerNC) as FlowVersionCleaner.
  */
-public with sharing class InactiveFlowCleaner implements Database.Batchable<String>, Database.AllowsCallouts, Database.Stateful {
+public without sharing class InactiveFlowCleaner implements Database.Batchable<String>, Database.AllowsCallouts, Database.Stateful {
 
     private static final String NC_BASE    = 'callout:FlowCleanerNC';
     private static final String API_PATH   = '/services/data/v62.0/tooling/';
@@ -166,10 +166,22 @@ public with sharing class InactiveFlowCleaner implements Database.Batchable<Stri
     private List<String> queryFlowInterviews(List<String> versionIds) {
         List<String> interviewIds = new List<String>();
         if (versionIds.isEmpty()) return interviewIds;
+        // FlowVersionViewId is a plain String field — no Id normalization occurs in SOQL.
+        // Tooling API returns 18-char Ids; the field may store 15-char. Include both forms.
+        Set<String> idSet = new Set<String>();
+        for (String s : versionIds) {
+            if (String.isBlank(s)) continue;
+            idSet.add(s);
+            if (s.length() == 18) {
+                idSet.add(s.substring(0, 15));
+            } else if (s.length() == 15) {
+                try { idSet.add(String.valueOf((Id) s)); } catch (Exception e) {}
+            }
+        }
         for (FlowInterview fi : [
             SELECT Id
             FROM FlowInterview
-            WHERE FlowVersionViewId IN :versionIds
+            WHERE FlowVersionViewId IN :idSet
         ]) {
             interviewIds.add(fi.Id);
         }
@@ -245,6 +257,42 @@ public with sharing class InactiveFlowCleaner implements Database.Batchable<Stri
                     logEntry(fv.id, fv.definitionName, fv.versionNumber, fv.status,
                         'Teardown', null);
                     totalVersionsDeleted++;
+                } else if (res.getStatusCode() == 400
+                        && res.getBody().contains('DEPENDENCY_EXISTS')) {
+                    // A FlowInterview still references this version — missed by bulk query.
+                    // Delete it now and retry once.
+                    logEntry(fv.id, fv.definitionName, fv.versionNumber, fv.status,
+                        'Warning', 'DEPENDENCY_EXISTS — retrying after late interview cleanup.');
+                    List<String> lateInterviewIds = queryFlowInterviews(
+                        new List<String>{ fv.id });
+                    if (!lateInterviewIds.isEmpty()) {
+                        List<SObject> toDelete = new List<SObject>();
+                        for (String intId : lateInterviewIds) {
+                            toDelete.add(new FlowInterview(Id = intId));
+                        }
+                        List<Database.DeleteResult> drs = Database.delete(toDelete, false);
+                        for (Database.DeleteResult dr : drs) {
+                            if (dr.isSuccess()) {
+                                totalInterviewsDeleted++;
+                            } else {
+                                logEntry(dr.getId(), fv.definitionName, null, null, 'Failed',
+                                    'Late FlowInterview delete failed: ' + dr.getErrors()[0].getMessage());
+                                totalInterviewsFailed++;
+                            }
+                        }
+                    }
+                    HttpResponse retry = http.send(req);
+                    if (retry.getStatusCode() == 204) {
+                        logEntry(fv.id, fv.definitionName, fv.versionNumber, fv.status,
+                            'Teardown', 'Succeeded after late interview cleanup.');
+                        totalVersionsDeleted++;
+                    } else {
+                        logEntry(fv.id, fv.definitionName, fv.versionNumber, fv.status,
+                            'Teardown Failed',
+                            'HTTP ' + retry.getStatusCode() + ' | ' + retry.getBody());
+                        totalVersionsFailed++;
+                        allOk = false;
+                    }
                 } else {
                     logEntry(fv.id, fv.definitionName, fv.versionNumber, fv.status,
                         'Teardown Failed',

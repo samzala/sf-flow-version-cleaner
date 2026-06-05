@@ -44,7 +44,7 @@
  * Or schedule it:
  *   System.schedule('Flow Cleaner', '0 0 2 * * ?', new FlowVersionCleanerSchedulable());
  */
-public with sharing class FlowVersionCleaner implements Database.Batchable<String>, Database.AllowsCallouts, Database.Stateful {
+public without sharing class FlowVersionCleaner implements Database.Batchable<String>, Database.AllowsCallouts, Database.Stateful {
 
     private static final String NC_BASE    = 'callout:FlowCleanerNC';
     private static final String API_PATH   = '/services/data/v62.0/tooling/';
@@ -209,6 +209,37 @@ public with sharing class FlowVersionCleaner implements Database.Batchable<Strin
                         fv != null ? fv.status         : null,
                         'Deleted', null);
                     totalDeleted++;
+                } else if (res.getStatusCode() == 400
+                        && res.getBody().contains('DEPENDENCY_EXISTS')) {
+                    // A FlowInterview still references this version — it was missed
+                    // by the bulk query (e.g. ID format edge case). Delete it now and retry.
+                    logEntry(flowId,
+                        fv != null ? fv.definitionName : null,
+                        fv != null ? fv.versionNumber  : null,
+                        fv != null ? fv.status         : null,
+                        'Warning', 'DEPENDENCY_EXISTS — retrying after late interview cleanup.');
+                    List<String> lateInterviewIds = queryFlowInterviewsByVersionIds(
+                        new List<String>{ flowId });
+                    if (!lateInterviewIds.isEmpty()) {
+                        deleteFlowInterviews(lateInterviewIds);
+                    }
+                    // Retry the DELETE once after cleanup.
+                    HttpResponse retry = http.send(req);
+                    if (retry.getStatusCode() == 204) {
+                        logEntry(flowId,
+                            fv != null ? fv.definitionName : null,
+                            fv != null ? fv.versionNumber  : null,
+                            fv != null ? fv.status         : null,
+                            'Deleted', 'Succeeded after late interview cleanup.');
+                        totalDeleted++;
+                    } else {
+                        logEntry(flowId,
+                            fv != null ? fv.definitionName : null,
+                            fv != null ? fv.versionNumber  : null,
+                            fv != null ? fv.status         : null,
+                            'Failed', 'HTTP ' + retry.getStatusCode() + ' | ' + retry.getBody());
+                        totalFailed++;
+                    }
                 } else {
                     logEntry(flowId,
                         fv != null ? fv.definitionName : null,
@@ -234,6 +265,16 @@ public with sharing class FlowVersionCleaner implements Database.Batchable<Strin
 
     public void finish(Database.BatchableContext bc) {
         if (dryRun == true) {
+            // Add interviews for teardown candidate versions to the consolidated count.
+            if (!teardownCandidates.isEmpty()) {
+                List<String> teardownVersionIds = new List<String>();
+                for (List<FlowVersion> versions : teardownCandidates.values()) {
+                    for (FlowVersion fv : versions) teardownVersionIds.add(fv.id);
+                }
+                List<String> teardownInterviewIds = queryFlowInterviewsByVersionIds(teardownVersionIds);
+                totalInterviewsDeleted += teardownInterviewIds.size();
+            }
+
             logInfo('===== DRY-RUN SUMMARY =====');
             logInfo('Versions that would be deleted       : ' + totalDeleted);
             logInfo('Interviews that would be deleted     : ' + totalInterviewsDeleted);
@@ -483,10 +524,22 @@ public with sharing class FlowVersionCleaner implements Database.Batchable<Strin
     private List<String> queryFlowInterviewsByVersionIds(List<String> versionIds) {
         List<String> interviewIds = new List<String>();
         if (versionIds.isEmpty()) return interviewIds;
+        // FlowVersionViewId is a plain String field — no Id normalization occurs in SOQL.
+        // Tooling API returns 18-char Ids; the field may store 15-char. Include both forms.
+        Set<String> idSet = new Set<String>();
+        for (String s : versionIds) {
+            if (String.isBlank(s)) continue;
+            idSet.add(s);
+            if (s.length() == 18) {
+                idSet.add(s.substring(0, 15));
+            } else if (s.length() == 15) {
+                try { idSet.add(String.valueOf((Id) s)); } catch (Exception e) {}
+            }
+        }
         for (FlowInterview fi : [
             SELECT Id
             FROM FlowInterview
-            WHERE FlowVersionViewId IN :versionIds
+            WHERE FlowVersionViewId IN :idSet
         ]) {
             interviewIds.add(fi.Id);
         }
