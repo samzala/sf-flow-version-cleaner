@@ -56,7 +56,7 @@ sf package install --package 04tIj000000LSvoIAG --target-org <your-org-alias> --
 
 **2. Create an External Credential**
 - Setup → Named Credentials → External Credentials → New
-- Label and Name: `FlowCleanerEC`. Protocol: OAuth 2.0. Flow: Client Credentials with Client Secret
+- Label and Name: Label = "Flow Cleaner External Credential", Name = "Flow_Cleaner_External_Credential". Protocol: OAuth 2.0. Flow: Client Credentials with Client Secret
 - Identity Provider URL: `https://<yourorg>.my.salesforce.com/services/oauth2/token`
 - Check Pass client credentials in request body
 - Under Principals, create a Principal named `ClientIDSecret` and enter Consumer Key and Secret
