@@ -31,12 +31,12 @@ A free Salesforce unlocked package that automatically deletes obsolete Flow vers
 
 **Install URL (sandbox and production):**
 ```
-https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIS000000U2bsYAC
+https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIj000000LSvoIAG
 ```
 
 **Or via Salesforce CLI:**
 ```bash
-sf package install --package 04tIS000000U2bsYAC --target-org <your-org-alias> --wait 10
+sf package install --package 04tIj000000LSvoIAG --target-org <your-org-alias> --wait 10
 ```
 
 ---
@@ -138,14 +138,14 @@ GROUP BY Action__c
 ## Source Code
 
 - **GitHub:** https://github.com/samzala/sf-flow-version-cleaner
-- **Install URL:** https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIj000000LSn4IAG
+- **Install URL:** https://login.salesforce.com/packaging/installPackage.apexp?p0=04tIj000000LSvoIAG
 - **Package type:** Unlocked — free, no AppExchange listing required
 
 ---
 
 ## Author
 
-Samruddhi Zala — [github.com/samruddhizala](https://github.com/samruddhizala)
+Samruddhi Zala — [github.com/samzala](https://github.com/samzala)
 
 ---
 
