@@ -1,4 +1,4 @@
-# Auto Delete Old Salesforce Flow Versions — Free Tool
+# Auto Delete Old Salesforce Flow and Versions — Free Tool
 
 A free Salesforce unlocked package that automatically deletes obsolete Flow versions, cleans up paused and errored Flow interviews, and fully tears down abandoned Flows on a configurable schedule.
 
